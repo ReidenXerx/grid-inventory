@@ -205,4 +205,18 @@ namespace FUI::DualRing
     void Tick();
     // Hand every bit back, then ask for a fresh sweep. New game / pre-load.
     void RevertGame();
+
+    // ---- ring mods (Meridia fork) -------------------------------------------
+    // ★When a dedicated ring mod is installed (MARA, S04 Armour + Mara, Jewelry
+    // Limiter), the two-ring rule above gets out of the way: rings are equipped
+    // and unequipped the plain engine way and the ring mod decides how many
+    // fingers are used. Decided once at kDataLoaded:
+    //   Data/SKSE/Plugins/GridInventory_rings.ini
+    //     iLetRingModsHandleRings = -1   auto (default): on when a ring mod is loaded
+    //                             =  0   never (the stock two-ring rule)
+    //                             =  1   always
+    // Auto detection reads each loaded SKSE plugin's REGISTERED name
+    // (SKSEPlugin_Version), not its file name, so a renamed DLL still counts.
+    void DetectRingMod();
+    [[nodiscard]] bool RingModMode();
 }

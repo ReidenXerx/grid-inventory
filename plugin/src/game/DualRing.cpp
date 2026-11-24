@@ -5,7 +5,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <fstream>
+#include <string>
 #include <vector>
+
+#include <Psapi.h>
 
 namespace FUI::DualRing
 {
@@ -343,6 +348,9 @@ namespace FUI::DualRing
     void PrepareForEquip(RE::TESObjectARMO* a_incoming, std::uint16_t a_sig,
                          RE::ExtraDataList* a_aimed, bool a_secondCell)
     {
+        // ★Meridia fork: a ring mod owns the fingers -- nothing comes off and no
+        // slot bit is lent; the caller's plain EquipObject does the rest.
+        if (RingModMode()) return;
         auto* p = RE::PlayerCharacter::GetSingleton();
         if (!p || !a_incoming) return;
 
@@ -473,6 +481,9 @@ namespace FUI::DualRing
     void Tick()
     {
         ++g_frame;
+        // ★Meridia fork: with a ring mod in charge there is no invariant of ours
+        // to enforce, and stripping or restoring slot bits would fight it.
+        if (RingModMode()) return;
         // ★Cheap when there is nothing to do, which is nearly always: no bit
         // is out and nobody asked. The heartbeat only runs while we owe one.
         if (!g_dirty && g_stripped.empty()) return;
@@ -499,6 +510,78 @@ namespace FUI::DualRing
                             g_wornCache.size(), g_stripped.size());
         }
     }
+
+    namespace
+    {
+        int g_ringMod = -1;   // -1 = not decided yet, 0 = off, 1 = a ring mod owns the fingers
+
+        std::string Trim(const std::string& a_s)
+        {
+            const auto b = a_s.find_first_not_of(" \t\r\n");
+            if (b == std::string::npos) return {};
+            const auto e = a_s.find_last_not_of(" \t\r\n");
+            return a_s.substr(b, e - b + 1);
+        }
+
+        // -1 auto, 0 off, 1 on -- from GridInventory_rings.ini (missing file = auto)
+        int ReadRingModSetting()
+        {
+            std::ifstream in("Data/SKSE/Plugins/GridInventory_rings.ini");
+            std::string line;
+            int mode = -1;
+            while (std::getline(in, line)) {
+                const auto cut = line.find_first_of(";#");
+                if (cut != std::string::npos) line.erase(cut);
+                const auto eq = line.find('=');
+                if (eq == std::string::npos) continue;
+                if (_stricmp(Trim(line.substr(0, eq)).c_str(), "iLetRingModsHandleRings") == 0) {
+                    mode = std::atoi(Trim(line.substr(eq + 1)).c_str());
+                }
+            }
+            return mode;
+        }
+
+        // The registered name of every loaded SKSE plugin (SKSEPlugin_Version:
+        // u32 dataVersion, u32 pluginVersion, char name[256]). A renamed DLL
+        // keeps its registered name, which is the point.
+        std::string LoadedRingModDll()
+        {
+            static HMODULE mods[4096];
+            DWORD need = 0;
+            if (!K32EnumProcessModules(GetCurrentProcess(), mods, sizeof(mods), &need)) return {};
+            const DWORD count = (std::min)(static_cast<DWORD>(need / sizeof(HMODULE)), static_cast<DWORD>(4096));
+            for (DWORD i = 0; i < count; ++i) {
+                const auto* v = reinterpret_cast<const char*>(GetProcAddress(mods[i], "SKSEPlugin_Version"));
+                if (!v) continue;
+                const char* name = v + 8;
+                if (_stricmp(name, "MARA") == 0 || _stricmp(name, "S04Armor") == 0) return name;
+            }
+            return {};
+        }
+    }
+
+    void DetectRingMod()
+    {
+        const int setting = ReadRingModSetting();
+        std::string why;
+        if (setting >= 0) {
+            g_ringMod = setting ? 1 : 0;
+            why = "GridInventory_rings.ini";
+        } else {
+            why = LoadedRingModDll();
+            if (why.empty()) {
+                if (auto* dh = RE::TESDataHandler::GetSingleton();
+                    dh && dh->LookupModByName("Jewelry limiter.esp")) {
+                    why = "Jewelry limiter.esp";
+                }
+            }
+            g_ringMod = why.empty() ? 0 : 1;
+        }
+        SKSE::log::info("[DUALRING] ring mod mode {} ({})", g_ringMod ? "ON" : "off",
+                        why.empty() ? "no ring mod found" : why);
+    }
+
+    bool RingModMode() { return g_ringMod == 1; }
 
     void RevertGame()
     {

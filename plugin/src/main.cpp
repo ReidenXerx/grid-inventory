@@ -2589,6 +2589,9 @@ namespace
         case SKSE::MessagingInterface::kDataLoaded:
             Setup();
             FUI::GoldCoins::InitForms();   // G1: resolve Grid Inventory.esp
+            // Meridia fork: every SKSE plugin is loaded by now, so a ring mod
+            // (MARA / S04 Armour / Jewelry Limiter) can be told apart here.
+            FUI::DualRing::DetectRingMod();
             // ★B3-a: close the loop the ledger opened. Registered once, here,
             // where the forms are already resolved.
             // ★A confirmation commits ITS OWN cell and no other: the slot key
