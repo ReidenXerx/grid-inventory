@@ -25,6 +25,12 @@ namespace FUI::BagFilter
 
     void Load();   // once, at plugin load
 
+    // ★(Meridia fork) Grid's own sizing category for a form ("weap_sword",
+    // "misc_gem", ...), through the same resolver the filters use. "" when the
+    // resolver is not set yet or the form is null. Used by general-bag sorting,
+    // which groups these categories rather than the typed-bag filters.
+    [[nodiscard]] std::string CategoryOf(RE::TESBoundObject* a_obj);
+
     // "" when nothing claims it. Cached per form — the keyword lookups behind
     // this are string work and must not run per frame.
     [[nodiscard]] const std::string& FilterOf(RE::TESBoundObject* a_obj);

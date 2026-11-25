@@ -2687,6 +2687,7 @@ namespace
     {
         FUI::Loadout::SaveGame(a_intfc);
         FUI::Grid::SaveGame(a_intfc);
+        FUI::Grid::SaveSortRecord(a_intfc);   // (Meridia fork) general-bag sorting (GBSF)
         FUI::GoldCoins::SaveGame(a_intfc);
         FUI::Costume::SaveGame(a_intfc);
         FUI::LootBarter::SaveGame(a_intfc);   // F7: container spot memory (GCLY)
@@ -2701,6 +2702,8 @@ namespace
                 FUI::Loadout::LoadRecord(a_intfc, version);
             } else if (type == FUI::Grid::kRecordType) {
                 FUI::Grid::LoadRecord(a_intfc, version);
+            } else if (type == FUI::Grid::kSortRecordType) {
+                FUI::Grid::LoadSortRecord(a_intfc, version);   // (Meridia fork)
             } else if (type == FUI::GoldCoins::kRecordType) {
                 FUI::GoldCoins::LoadRecord(a_intfc, version);
             } else if (type == FUI::Costume::kRecordType) {

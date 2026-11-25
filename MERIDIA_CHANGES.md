@@ -30,3 +30,14 @@ This fork adds a switch that steps aside for those mods:
 
 Nothing else is changed. The log line `[DUALRING] ring mod mode ON/off (reason)` in
 GridInventory.log shows the decision at load.
+
+
+## General-bag sorting (SORT + COLLECT on general bags)
+
+A typed bag has always had a COLLECT button for its one category; a general bag took anything and could only be tidied by hand.
+
+- **SORT** (titlebar of every general bag): a popup with 17 groups built on Grid's own sizing categories (`CategoryOf`): weapons, staves, arrows and bolts, armor, clothing, jewelry, potions and poisons, food and drink, alchemy ingredients, soul gems, gems, ore and ingots, hides and animal parts, books and scrolls, keys, tools, clutter and misc. "Untick all" clears it.
+- **COLLECT** appears next to SORT once something is ticked: it pulls every matching tile from the main board, and from general bags that have no sort of their own, into this bag. Typed bags and other sorted bags keep what they hold; quest items, bags, pinned tiles and the item on the cursor are skipped. Marks only, like the typed COLLECT: the placement pass seats them and bounces what does not fit back to main.
+- Same contract as the typed COLLECT: nothing moves unless the player presses the button.
+- Saved per save in its own cosave record `'GBSF'` v1 (`[u32 bags]{str bagKey, u32 n, n x str groupId}`); `'GLAY'` is untouched, and unknown group ids are dropped on load.
+- New strings: `BagSort`, `BagSortTip`, `BagSortHead`, `BagSortCollectTip`, `BagSortClear`, `Sort*` (one per group); English defaults, translatable through the usual ini overlay.

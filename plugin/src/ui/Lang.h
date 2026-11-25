@@ -182,6 +182,28 @@ namespace FUI::Lang
         X(BagCollect, "COLLECT")   /* typed bag: pull matching items in */                                  \
         X(BagCollectTip, "Pull every %s from the pack into this bag")                                       \
         X(BagOnly, "Holds %s only")   /* typed bag tooltip */                                               \
+        X(BagSort, "SORT")   /* general bag: choose what it collects */                                     \
+        X(BagSortTip, "Choose what this bag collects")                                                      \
+        X(BagSortHead, "This bag collects")                                                                 \
+        X(BagSortCollectTip, "Pull everything ticked from the pack into this bag")                          \
+        X(BagSortClear, "Untick all")                                                                       \
+        X(SortWeapons, "weapons")                                                                           \
+        X(SortStaves, "staves")                                                                             \
+        X(SortAmmo, "arrows and bolts")                                                                     \
+        X(SortArmor, "armor")                                                                               \
+        X(SortClothing, "clothing")                                                                         \
+        X(SortJewelry, "jewelry")                                                                           \
+        X(SortPotions, "potions and poisons")                                                               \
+        X(SortFood, "food and drink")                                                                       \
+        X(SortIngredients, "alchemy ingredients")                                                           \
+        X(SortSoulGems, "soul gems")                                                                        \
+        X(SortGems, "gems")                                                                                 \
+        X(SortOre, "ore and ingots")                                                                        \
+        X(SortHides, "hides and animal parts")                                                              \
+        X(SortBooks, "books and scrolls")                                                                   \
+        X(SortKeys, "keys")                                                                                 \
+        X(SortTools, "tools")                                                                               \
+        X(SortClutter, "clutter and misc")                                                                  \
         X(CostumeHint, "Wear this set as an appearance (stats stay with your equipment)")                   \
         X(CostumeWornHint, "You are already wearing this set")                                              \
         X(FilterAlchemy, "alchemy ingredients")                                                             \

@@ -6797,6 +6797,126 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
         //
         // Marks only; the normal placement pass seats them and bounces what
         // does not fit back to main, so a full bag partially collects for free.
+        // ★(Meridia fork) GENERAL-BAG SORTING. A typed bag knows what it takes
+        // from its item definition; a general bag takes anything, so until now
+        // the only way to tidy one was by hand. The player ticks groups on a
+        // general bag (the SORT popup in its titlebar) and its COLLECT pulls
+        // them in -- the same button-not-sweep contract as the typed COLLECT
+        // above: nothing moves unless the player asks.
+        //
+        // Groups are built on CategoryOf() (the sizing classifier), not on the
+        // typed-bag filters: those seven already have their own bags, and what
+        // a general bag needs is the rest -- weapons, armor, jewelry, gems...
+        struct SortRow
+        {
+            const char* id;
+            Lang::Str   name;
+        };
+        constexpr SortRow kSortRows[] = {
+            { "weapons", Lang::Str::SortWeapons },         { "staves", Lang::Str::SortStaves },
+            { "ammo", Lang::Str::SortAmmo },               { "armor", Lang::Str::SortArmor },
+            { "clothing", Lang::Str::SortClothing },       { "jewelry", Lang::Str::SortJewelry },
+            { "potions", Lang::Str::SortPotions },         { "food", Lang::Str::SortFood },
+            { "ingredients", Lang::Str::SortIngredients }, { "soulgems", Lang::Str::SortSoulGems },
+            { "gems", Lang::Str::SortGems },               { "ore", Lang::Str::SortOre },
+            { "hides", Lang::Str::SortHides },             { "books", Lang::Str::SortBooks },
+            { "keys", Lang::Str::SortKeys },               { "tools", Lang::Str::SortTools },
+            { "clutter", Lang::Str::SortClutter },
+        };
+
+        // bag tile key -> the group ids ticked on it. Saved in its own cosave
+        // record ('GBSF'), so the 'GLAY' format is untouched.
+        std::unordered_map<std::string, std::set<std::string>> g_bagSort;
+
+        [[nodiscard]] const char* SortGroupOfCategory(const std::string& c)
+        {
+            if (c.empty()) return nullptr;
+            if (c == "weap_staff") return "staves";
+            if (c.starts_with("weap_")) return "weapons";
+            if (c.starts_with("ammo")) return "ammo";
+            if (c == "armor_amulet" || c == "armor_ring" || c == "armor_circlet" ||
+                c == "armor_jewelry") return "jewelry";
+            if (c == "armor_cloth" || c == "armor_accessory") return "clothing";
+            if (c.starts_with("armor_")) return "armor";
+            if (c == "potion" || c == "poison") return "potions";
+            if (c.starts_with("food")) return "food";
+            if (c == "ingredient") return "ingredients";
+            if (c == "soulgem") return "soulgems";
+            if (c == "misc_gem") return "gems";
+            if (c == "misc_ore" || c == "misc_ingot") return "ore";
+            if (c == "misc_hide" || c == "misc_animalpart") return "hides";
+            if (c.starts_with("book") || c == "scroll") return "books";
+            if (c == "key") return "keys";
+            if (c == "misc_tool") return "tools";
+            if (c == "misc_clutter" || c == "misc") return "clutter";
+            return nullptr;
+        }
+
+        // FormID -> group (nullptr = no group). A form's category cannot change
+        // within a session, and this runs over the whole board per press.
+        std::unordered_map<RE::FormID, const char*> g_sortGroupCache;
+
+        [[nodiscard]] const char* SortGroupOf(RE::TESBoundObject* a_obj)
+        {
+            if (!a_obj) return nullptr;
+            const auto id = a_obj->GetFormID();
+            if (auto f = g_sortGroupCache.find(id); f != g_sortGroupCache.end()) return f->second;
+            const char* g = SortGroupOfCategory(BagFilter::CategoryOf(a_obj));
+            g_sortGroupCache.emplace(id, g);
+            return g;
+        }
+
+        [[nodiscard]] bool BagHasSort(const std::string& a_bagKey)
+        {
+            const auto f = g_bagSort.find(a_bagKey);
+            return f != g_bagSort.end() && !f->second.empty();
+        }
+
+        // Marks only, like CollectIntoBag: the placement pass seats them and
+        // bounces what does not fit back to main.
+        int CollectIntoSortedBag(const std::string& a_bagKey)
+        {
+            const auto set = g_bagSort.find(a_bagKey);
+            if (a_bagKey.empty() || set == g_bagSort.end() || set->second.empty()) return 0;
+            auto* p = RE::PlayerCharacter::GetSingleton();
+            int moved = 0;
+            for (auto& it : g_items) {
+                if (!it.obj) continue;
+                if (it.inBag == a_bagKey) continue;      // already home
+                if (it.inBag == kTrashKey) continue;     // queued for deletion
+                if (it.def.bag) continue;                // no bag inside a bag
+                if (it.fixed) continue;                  // pinned by the player
+                if (g_held && g_held->key == it.key) continue;
+                // From main, and from general bags that have NO sort of their
+                // own. A typed bag, or another sorted bag, keeps what it holds
+                // -- otherwise two bags fight over an item on every press.
+                if (!it.inBag.empty()) {
+                    const auto src = std::find_if(g_views.begin(), g_views.end(),
+                        [&](const View& v) { return v.bagKey == it.inBag; });
+                    if (src != g_views.end() && !src->accept.empty()) continue;
+                    if (BagHasSort(it.inBag)) continue;
+                }
+                const char* g = SortGroupOf(it.obj);
+                if (!g || !set->second.contains(g)) continue;
+                if (p) {
+                    if (auto* e = LiveEntry(p, it.obj); e && e->IsQuestObject()) continue;
+                }
+                it.inBag = a_bagKey;
+                it.col = -1;
+                it.row = -1;
+                auto& le = g_layout[it.key];
+                le.bag = a_bagKey;
+                le.col = -1;
+                le.row = -1;
+                ++moved;
+            }
+            if (moved > 0) {
+                SKSE::log::info("[BAGSORT] collect into '{}': {} tile(s)", a_bagKey, moved);
+                RequestRebuild();
+            }
+            return moved;
+        }
+
         int CollectIntoBag(const std::string& a_bagKey, const std::string& a_accept)
         {
             if (a_bagKey.empty() || a_accept.empty()) return 0;
@@ -14112,7 +14232,18 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
             // edge and claimed ActiveId there first -- the very failure the
             // reserve exists to prevent, just narrow enough (6px) to pass for
             // a missed click. Widening the margin would have widened it too.
-            const float colRes = typedBag ? colW + Theme::TopControlRightPad() : 0.0f;
+            // ★(Meridia fork) a GENERAL bag gets SORT (and COLLECT once
+            // something is ticked) in the same titlebar slot
+            const bool generalBag = !typedBag && !v.bagKey.empty() && v.bagKey != kTrashKey;
+            const bool sorted = generalBag && BagHasSort(v.bagKey);
+            const char* sortLbl = Lang::T(Lang::Str::BagSort);
+            const float sortW = generalBag ? ImGui::CalcTextSize(sortLbl).x + 14.0f * S : 0.0f;
+            const float gColW = sorted ? ImGui::CalcTextSize(colLbl).x + 14.0f * S : 0.0f;
+            const float gap = 4.0f * S;
+            const float colRes = typedBag ? colW + Theme::TopControlRightPad()
+                               : generalBag ? sortW + (sorted ? gColW + gap : 0.0f) +
+                                                  Theme::TopControlRightPad()
+                                            : 0.0f;
 
             ImGui::Begin(("##bag_" + v.bagKey).c_str(), nullptr, kManagedWinFlags);
             wm->TitleBar(v.bagKey, v.bagName.c_str(), colRes);
@@ -14171,6 +14302,56 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
                     std::snprintf(hint, sizeof(hint), Lang::T(Lang::Str::BagCollectTip),
                         BagFilter::DisplayName(v.accept));
                     UIRoot::NoteHoverHint(hint);
+                }
+                ImGui::SetCursorScreenPos(keep);
+            }
+            if (generalBag) {
+                const ImVec2 keep = ImGui::GetCursorScreenPos();
+                const float lineH = ImGui::GetTextLineHeight();
+                const float btnH = lineH + 6.0f * S;
+                const float textTop = WinManager::TitleTextY(v.bagKey, lineH);
+                const float btnY = textTop - (btnH - lineH) * 0.5f;
+                const float right = ImGui::GetWindowPos().x + size.x - Theme::TopControlRightPad();
+                auto* dl = ImGui::GetWindowDrawList();
+                // same label treatment as the typed COLLECT (Val() on hover)
+                auto label = [&](const char* a_lbl) {
+                    const bool hov = ImGui::IsItemHovered();
+                    const ImVec2 bp = ImGui::GetItemRectMin();
+                    const ImVec2 bs = ImGui::GetItemRectSize();
+                    const ImVec2 ts = ImGui::CalcTextSize(a_lbl);
+                    dl->AddText(ImVec2(bp.x + (bs.x - ts.x) * 0.5f, bp.y + (bs.y - ts.y) * 0.5f),
+                        hov ? Theme::Val() : ImGui::GetColorU32(sk.inkDim), a_lbl);
+                    return hov;
+                };
+                const std::string popId = "##sortpop_" + v.bagKey;
+                ImGui::SetCursorScreenPos(ImVec2(right - sortW, btnY));
+                if (Sfx::Button(("##sort_" + v.bagKey).c_str(), ImVec2(sortW, btnH))) {
+                    ImGui::OpenPopup(popId.c_str());
+                }
+                if (label(sortLbl)) UIRoot::NoteHoverHint(Lang::T(Lang::Str::BagSortTip));
+                if (sorted) {
+                    ImGui::SetCursorScreenPos(ImVec2(right - sortW - gap - gColW, btnY));
+                    if (Sfx::Button(("##sortcollect_" + v.bagKey).c_str(), ImVec2(gColW, btnH))) {
+                        CollectIntoSortedBag(v.bagKey);
+                    }
+                    if (label(colLbl)) UIRoot::NoteHoverHint(Lang::T(Lang::Str::BagSortCollectTip));
+                }
+                if (ImGui::BeginPopup(popId.c_str())) {
+                    auto& set = g_bagSort[v.bagKey];
+                    ImGui::TextUnformatted(Lang::T(Lang::Str::BagSortHead));
+                    ImGui::Separator();
+                    for (const auto& r : kSortRows) {
+                        bool on = set.contains(r.id);
+                        if (ImGui::Checkbox(Lang::T(r.name), &on)) {
+                            if (on) set.insert(r.id); else set.erase(r.id);
+                        }
+                    }
+                    ImGui::Separator();
+                    if (ImGui::Selectable(Lang::T(Lang::Str::BagSortClear))) set.clear();
+                    ImGui::EndPopup();
+                }
+                if (const auto e = g_bagSort.find(v.bagKey); e != g_bagSort.end() && e->second.empty()) {
+                    g_bagSort.erase(e);   // keep the record free of empty entries
                 }
                 ImGui::SetCursorScreenPos(keep);
             }
@@ -17383,6 +17564,56 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
             g_layout.size(), g_openBags.size(), g_seenCount.size());
     }
 
+    // ---- (Meridia fork) general-bag sorting, cosave 'GBSF' v1 ----
+    // [u32 bagCount]{ str bagKey, u32 n, n x str groupId }
+    void SaveSortRecord(SKSE::SerializationInterface* a_intfc)
+    {
+        std::uint32_t n = 0;
+        for (const auto& [k, s] : g_bagSort) {
+            if (!k.empty() && !s.empty()) ++n;
+        }
+        if (n == 0) return;   // nothing ticked: write no record at all
+        if (!a_intfc->OpenRecord(kSortRecordType, 1)) {
+            SKSE::log::error("[BAGSORT] cosave: OpenRecord failed");
+            return;
+        }
+        a_intfc->WriteRecordData(n);
+        for (const auto& [k, s] : g_bagSort) {
+            if (k.empty() || s.empty()) continue;
+            WriteStr(a_intfc, k);
+            a_intfc->WriteRecordData(static_cast<std::uint32_t>(s.size()));
+            for (const auto& g : s) WriteStr(a_intfc, g);
+        }
+        SKSE::log::info("[BAGSORT] cosave: {} sorted bag(s) saved", n);
+    }
+
+    void LoadSortRecord(SKSE::SerializationInterface* a_intfc, std::uint32_t a_version)
+    {
+        g_bagSort.clear();
+        if (a_version != 1) {
+            SKSE::log::warn("[BAGSORT] cosave: unknown version {}, ignored", a_version);
+            return;
+        }
+        std::uint32_t n = 0;
+        if (!a_intfc->ReadRecordData(n) || n > kMaxEntries) return;
+        for (std::uint32_t i = 0; i < n; ++i) {
+            std::string key;
+            std::uint32_t m = 0;
+            if (!ReadStr(a_intfc, key) || !a_intfc->ReadRecordData(m) || m > 64) return;
+            auto& set = g_bagSort[key];
+            for (std::uint32_t j = 0; j < m; ++j) {
+                std::string g;
+                if (!ReadStr(a_intfc, g)) return;
+                // only ids this build knows; an unknown one would show nowhere
+                for (const auto& r : kSortRows) {
+                    if (g == r.id) { set.insert(g); break; }
+                }
+            }
+            if (set.empty()) g_bagSort.erase(key);
+        }
+        SKSE::log::info("[BAGSORT] cosave: {} sorted bag(s) loaded", g_bagSort.size());
+    }
+
     void RevertGame(SKSE::SerializationInterface*)
     {
         // clean slate before every load / new game. g_layoutLoaded=false keeps
@@ -17391,6 +17622,7 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
         g_layout.clear();
         g_openBags.clear();
         g_pendingEquip.clear();   // cross-frame set: must never outlive a load
+        g_bagSort.clear();   // (Meridia fork) per-save, like the layout
         // ★S1: the stash holds an Item with a live TESBoundObject* -- a load
         // replaces the world under it (원칙 2), and a queued move names keys
         // from the save being left. Both die at the boundary.

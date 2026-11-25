@@ -939,6 +939,12 @@ namespace FUI::Grid
     void RevertGame(SKSE::SerializationInterface* a_intfc);
     void MarkLayoutFresh();   // kNewGame: start empty, skip the legacy-ini fallback
 
+    // ★(Meridia fork) general-bag sorting: which groups each general bag
+    // collects. Its own record so 'GLAY' stays byte-identical to upstream.
+    inline constexpr std::uint32_t kSortRecordType = 'GBSF';
+    void SaveSortRecord(SKSE::SerializationInterface* a_intfc);
+    void LoadSortRecord(SKSE::SerializationInterface* a_intfc, std::uint32_t a_version);
+
     // GI65: the menu is closing — everything on the board counts as seen, and
     // the counts become the baseline the next opening is measured against.
     // ★Shelf USE MODE: this form is arriving only to be consumed, so typed-bag

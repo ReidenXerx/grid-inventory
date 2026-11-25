@@ -174,6 +174,11 @@ book    = cat:book, cat:book_note, cat:book_skill, cat:book_spell, cat:scroll, v
         g_categoryOf = std::move(a_fn);
     }
 
+    std::string CategoryOf(RE::TESBoundObject* a_obj)
+    {
+        return (a_obj && g_categoryOf) ? g_categoryOf(a_obj) : std::string{};
+    }
+
     void Load()
     {
         if (g_loaded) return;
