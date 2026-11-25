@@ -6885,7 +6885,6 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
                 if (it.inBag == a_bagKey) continue;      // already home
                 if (it.inBag == kTrashKey) continue;     // queued for deletion
                 if (it.def.bag) continue;                // no bag inside a bag
-                if (it.fixed) continue;                  // pinned by the player
                 if (g_held && g_held->key == it.key) continue;
                 // From main, and from general bags that have NO sort of their
                 // own. A typed bag, or another sorted bag, keeps what it holds
@@ -14336,6 +14335,10 @@ std::function<void(RE::TESBoundObject*, int, RE::ExtraDataList*)> g_dropWorld;
                     }
                     if (label(colLbl)) UIRoot::NoteHoverHint(Lang::T(Lang::Str::BagSortCollectTip));
                 }
+                // open BELOW the SORT button, right edges aligned, so the
+                // popup never sits on the buttons it belongs to
+                ImGui::SetNextWindowPos(ImVec2(right, btnY + btnH + 2.0f * S),
+                                        ImGuiCond_Appearing, ImVec2(1.0f, 0.0f));
                 if (ImGui::BeginPopup(popId.c_str())) {
                     auto& set = g_bagSort[v.bagKey];
                     ImGui::TextUnformatted(Lang::T(Lang::Str::BagSortHead));
